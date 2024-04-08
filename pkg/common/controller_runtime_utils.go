@@ -17,6 +17,8 @@ import (
 	staticProvisioner "sigs.k8s.io/sig-storage-local-static-provisioner/pkg/common"
 )
 
+// zhou: the object whose Label have pair "app", and its value in components.
+
 // EnqueueOnlyLabeledSubcomponents returns a predicate that filters only objects that
 // have labels["app"] in components
 func EnqueueOnlyLabeledSubcomponents(components ...string) predicate.Predicate {
@@ -69,8 +71,13 @@ func GetWatchNamespace() (string, error) {
 	return ns, nil
 }
 
+// zhou: read ConfigMap and override into RuntimeConfig.
+
 // ReloadRuntimeConfig obtains all values needed by runtime config during Reconcile and writes them to the existing RuntimeConfig provided
 func ReloadRuntimeConfig(ctx context.Context, client client.Client, request ctrl.Request, nodeName string, rc *staticProvisioner.RuntimeConfig) error {
+
+	// zhou: get ConfigMap "local-provisioner"
+
 	// get associated provisioner config
 	cm := &corev1.ConfigMap{}
 	err := client.Get(ctx, types.NamespacedName{Name: ProvisionerConfigMapName, Namespace: request.Namespace}, cm)
@@ -87,6 +94,8 @@ func ReloadRuntimeConfig(ctx context.Context, client client.Client, request ctrl
 		return err
 	}
 
+	// zhou: convert ConfigMap into "sig-storage-local-static-provisioner" format.
+
 	// read provisioner config
 	provisionerConfig := staticProvisioner.ProvisionerConfiguration{}
 	if err := staticProvisioner.ConfigMapDataToVolumeConfig(cm.Data, &provisionerConfig); err != nil {
@@ -94,8 +103,8 @@ func ReloadRuntimeConfig(ctx context.Context, client client.Client, request ctrl
 		return err
 	}
 
-	rc.Name = GetProvisionedByValue(*node)
-	rc.Node = node
+	rc.Name = GetProvisionedByValue(*node) // zhou: e.g. "local-volume-provisioner-node01.example.local"
+	rc.Node = node                         // zhou: "node01.example.local"
 	rc.Namespace = request.Namespace
 	rc.DiscoveryMap = provisionerConfig.StorageClassConfig
 	rc.NodeLabelsForPV = provisionerConfig.NodeLabelsForPV

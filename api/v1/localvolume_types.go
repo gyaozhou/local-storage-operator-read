@@ -22,6 +22,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// zhou:
+
 // LocalVolumeSpec defines the desired state of LocalVolume
 type LocalVolumeSpec struct {
 	// managementState indicates whether and how the operator should manage the component
@@ -51,6 +53,8 @@ const (
 	PersistentVolumeFilesystem PersistentVolumeMode = "Filesystem"
 )
 
+// zhou: precisely managed disks by name.
+
 // StorageClassDevice returns device configuration
 type StorageClassDevice struct {
 	// StorageClass name to use for set of matched devices
@@ -64,6 +68,9 @@ type StorageClassDevice struct {
 	// A list of device paths which would be chosen for local storage.
 	// For example - ["/dev/sda", "/dev/sdb", "/dev/disk/by-id/ata-crucial"]
 	DevicePaths []string `json:"devicePaths,omitempty"`
+
+	// zhou: forcely wipe disk, looks no need Local Storage Operator
+
 	// This option will destroy all leftover data on the devices before they're used as PersistentVolumes. Use with care.
 	// +optional
 	ForceWipeDevicesAndDestroyAllData bool `json:"forceWipeDevicesAndDestroyAllData,omitempty"`
@@ -88,6 +95,8 @@ type LocalVolumeStatus struct {
 	// +optional
 	Generations []operatorv1.GenerationStatus `json:"generations,omitempty"`
 }
+
+// zhou: manage local drives in precise way.
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

@@ -6,3 +6,5 @@ debug.test
 *.swp
 opm-bundle/
 Dockerfile.diskmaker.hack
+cscope.files
+cscope.out

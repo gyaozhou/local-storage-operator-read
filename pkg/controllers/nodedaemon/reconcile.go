@@ -41,6 +41,8 @@ const (
 
 	controllerName = "localvolumesetdaemon-controller"
 
+	// zhou: same content from ConfigMap
+
 	dataHashAnnotationKey = "local.storage.openshift.io/configMapDataHash"
 
 	orphanLSOServiceMonitorName = "local-storage-operator-metrics"
@@ -52,9 +54,11 @@ type DaemonReconciler struct {
 	// that reads objects from the cache and writes to the apiserver
 	Client                        client.Client
 	Scheme                        *runtime.Scheme
-	deletedStaticProvisioner      bool
-	deletedOrphanedServiceMonitor bool
+	deletedStaticProvisioner      bool // zhou: legacy DaemonSet be checked and removed.
+	deletedOrphanedServiceMonitor bool // zhou: legacy ServiceMonitor be checked and removed.
 }
+
+// zhou: handle object type ???, with "mynamespace/"
 
 // Reconcile reads that state of the cluster for a LocalVolumeSet object and makes changes based on the state read
 // and what is in the LocalVolumeSet.Spec
@@ -62,18 +66,28 @@ type DaemonReconciler struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *DaemonReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+
+	// zhou: legacy objects be checked and removed.
+
 	err := r.cleanupOldObjects(ctx, request.Namespace)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
+	// zhou: get all LocalVolumeSet and LocalVolume related infor.
+
 	lvSets, lvs, tolerations, ownerRefs, nodeSelector, err := r.aggregateDeamonInfo(ctx, request)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// zhou: there is no LocalVolumeSet and LocalVolume.
+
 	if len(lvSets.Items) < 1 && len(lvs.Items) < 1 {
 		return ctrl.Result{}, nil
 	}
+
+	// zhou: create/update ConfigMap "local-provisioner"
 
 	configMap, opResult, err := r.reconcileProvisionerConfigMap(ctx, request, lvSets.Items, lvs.Items, ownerRefs)
 	if err != nil {
@@ -97,6 +111,8 @@ func (r *DaemonReconciler) Reconcile(ctx context.Context, request ctrl.Request) 
 
 	configMapDataHash := dataHash(configMap.Data)
 
+	// zhou: create DaemonSet diskmaker-manager
+
 	diskMakerDSMutateFn := getDiskMakerDSMutateFn(request, tolerations, ownerRefs, nodeSelector, configMapDataHash)
 	ds, opResult, err := CreateOrUpdateDaemonset(ctx, r.Client, diskMakerDSMutateFn)
 	if err != nil {
@@ -107,6 +123,8 @@ func (r *DaemonReconciler) Reconcile(ctx context.Context, request ctrl.Request) 
 
 	return ctrl.Result{}, err
 }
+
+// zhou: legacy objects be checked and removed.
 
 // do a one-time delete of the old object that are not needed in this release
 func (r *DaemonReconciler) cleanupOldObjects(ctx context.Context, namespace string) error {
@@ -121,6 +139,11 @@ func (r *DaemonReconciler) cleanupOldObjects(ctx context.Context, namespace stri
 	}
 	return errorutils.NewAggregate(errs)
 }
+
+// zhou: delete DaemonSet whose Label "app" value is:
+//       1. "local-volume-diskmaker-xxx"
+//       2. "local-volume-provisioner-xxx"
+//       3. "localvolumeset-local-provisioner"
 
 // do a one-time delete of the old static-provisioner daemonset
 func (r *DaemonReconciler) cleanupOldDaemonsets(ctx context.Context, namespace string) error {
@@ -167,6 +190,8 @@ func (r *DaemonReconciler) cleanupOldDaemonsets(ctx context.Context, namespace s
 		return err
 	}
 
+	// zhou: wait for deleted DaemonSet created Pods be removed.
+
 	// wait for pods to die
 	err = wait.ExponentialBackoff(wait.Backoff{
 		Cap:      time.Minute * 2,
@@ -204,6 +229,8 @@ func (r *DaemonReconciler) cleanupOldDaemonsets(ctx context.Context, namespace s
 	return nil
 }
 
+// zhou: delete legacy ServiceMonitor "local-storage-operator-metrics"
+
 // do a one-time delete of the old LSO ServiceMonitor from 4.8
 func (r *DaemonReconciler) cleanupOrphanServiceMonitor(ctx context.Context, namespace string) error {
 	if r.deletedOrphanedServiceMonitor {
@@ -228,8 +255,13 @@ func (r *DaemonReconciler) cleanupOrphanServiceMonitor(ctx context.Context, name
 	return nil
 }
 
+// zhou: handle LocalVolume, LocalVolumeSet, DaemonSet, ConfigMap changes, and only enqueue its namespace.
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *DaemonReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	// zhou: enqueue object including namespace only, like "mynamespace/"
+
 	// The controller will ignore the name part of the enqueued request as
 	// every reconcile gathers multiple resources an acts on a few one-per-namespace objects.
 	enqueueOnlyNamespace := handler.EnqueueRequestsFromMapFunc(
@@ -243,10 +275,19 @@ func (r *DaemonReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1.LocalVolume{}).
 		Watches(&localv1alpha1.LocalVolumeSet{}, enqueueOnlyNamespace).
+
+		// zhou: if DaemonSet name contains "diskmaker-manager", "local-provisioner"
+
 		// watch provisioner, diskmaker-manager daemonsets
 		Watches(&appsv1.DaemonSet{}, enqueueOnlyNamespace, builder.WithPredicates(common.EnqueueOnlyLabeledSubcomponents(DiskMakerName, ProvisionerName))).
+
+		// zhou: if ConfigMap name contains "local-provisioner"
+
 		// watch provisioner configmap
 		Watches(&corev1.ConfigMap{}, enqueueOnlyNamespace, builder.WithPredicates(common.EnqueueOnlyLabeledSubcomponents(common.ProvisionerConfigMapName))).
+
+		// zhou:
+
 		Watches(&v1.LocalVolume{}, enqueueOnlyNamespace).
 		Complete(r)
 }

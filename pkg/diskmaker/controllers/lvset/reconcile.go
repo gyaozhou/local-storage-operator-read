@@ -38,6 +38,8 @@ const (
 	pvOwnerKey = "pvOwner"
 )
 
+// zhou: provisioning PV according to LocalVolumeSet
+
 // Reconcile reads that state of the cluster for a LocalVolumeSet object and makes changes based on the state read
 // and what is in the LocalVolumeSet.Spec
 // Note:
@@ -60,6 +62,8 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 
 	klog.InfoS("Reconciling LocalVolumeSet", "namespace", request.Namespace, "name", request.Name)
 
+	// zhou: read ConfigMap into runtimeconfig???
+
 	err = common.ReloadRuntimeConfig(ctx, r.Client, request, r.nodeName, r.runtimeConfig)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -74,6 +78,8 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 	// since deletion timestamp is notset, clear out its metrics
 	localmetrics.RemoveLVSDeletionTimestampMetric(lvset.GetName())
 
+	// zhou: check wether current node matching LocalVolumeSet node selector.
+
 	// ignore LocalVolmeSets whose LabelSelector doesn't match this node
 	// NodeSelectorTerms.MatchExpressions are ORed
 	matches, err := common.NodeSelectorMatchesNodeLabels(r.runtimeConfig.Node, lvset.Spec.NodeSelector)
@@ -85,6 +91,8 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 	if !matches {
 		return ctrl.Result{}, nil
 	}
+
+	// zhou: StorageClass should already be created by local-storage-operator itself.
 
 	storageClassName := lvset.Spec.StorageClassName
 
@@ -101,7 +109,12 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 	if !ok {
 		return ctrl.Result{}, fmt.Errorf("could not find storageclass entry %q in provisioner config: %+v", storageClassName, r.runtimeConfig.DiscoveryMap)
 	}
+
+	// zhou: "/mnt/local-storage/odf-lvs"
+
 	symLinkDir := symLinkConfig.HostDir
+
+	// zhou: like what did in diskmaker-discovery
 
 	// list block devices
 	blockDevices, badRows, err := internal.ListBlockDevices([]string{})
@@ -116,16 +129,25 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 		klog.Error(msg)
 	}
 
+	// zhou: "validDevices" are valid, available and matching LocalVolumeSet spec.
+	//       "delayedDevices" are the valid and available, but are not old enough.
+
 	// find disks that match lvset filters and matchers
 	validDevices, delayedDevices := r.getValidDevices(lvset, blockDevices)
 
 	// update metrics for unmatched disks
 	localmetrics.SetLVSUnmatchedDiskMetric(nodeName, storageClassName, len(blockDevices)-len(validDevices))
 
+	// zhou: process devices that matching LocalVolumeSet spec.
+
 	// process valid devices
 	var totalProvisionedPVs int
 	var noMatch []string
 	for _, blockDevice := range validDevices {
+
+		// zhou: in order to get device's corresponding device id and target, like
+		//       "wwn-0x5ee228447f8ce3a9-> /dev/disk/by-id/wwn-0x5ee228447f8ce3a9"
+
 		symlinkSourcePath, symlinkPath, idExists, err := common.GetSymLinkSourceAndTarget(blockDevice, symLinkDir)
 		if err != nil {
 			klog.ErrorS(err, "error discovering symlink source and target",
@@ -137,6 +159,8 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 			klog.InfoS("Using real device path, this could have problems if device name changes",
 				"blockDevice", blockDevice.Name)
 		}
+
+		// zhou: ensure the linked devices number
 
 		// validate MaxDeviceCount
 		var alreadyProvisionedCount int
@@ -164,6 +188,8 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 			return ctrl.Result{}, err
 		}
 
+		// zhou: provisioning PV
+
 		klog.InfoS("provisioning PV", "blockDevice", blockDevice.Name)
 		r.eventReporter.Report(lvset, newDiskEvent(diskmaker.FoundMatchingDisk, "provisioning matching disk", blockDevice.KName, corev1.EventTypeNormal))
 		err = r.provisionPV(lvset, blockDevice, *storageClass, mountPointMap, symlinkSourcePath, symlinkPath, idExists)
@@ -182,10 +208,14 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 	// update metrics for total persistent volumes provisioned
 	localmetrics.SetLVSProvisionedPVMetric(nodeName, storageClassName, totalProvisionedPVs)
 
+	// zhou: get linked device which not matching LocalVolumeSet anymore.
+
 	orphanSymlinkDevices, err := internal.GetOrphanedSymlinks(symLinkDir, validDevices)
 	if err != nil {
 		klog.ErrorS(err, "failed to get orphaned symlink devices in current reconcile")
 	}
+
+	// zhou: do nothing with these orphan symlink devices.
 
 	if len(orphanSymlinkDevices) > 0 {
 		klog.InfoS("found orphan symlinked devices in current reconcile",
@@ -200,14 +230,21 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 			"paths", noMatch, "directory", symLinkDir)
 	}
 
+	// zhou: some devices are not old enough, need to retry.
+
 	// shorten the requeueTime if there are delayed devices
 	requeueTime := time.Minute
 	if len(delayedDevices) > 1 {
 		requeueTime = deviceMinAge / 2
 	}
 
+	// zhou: always perform requeue
+
 	return ctrl.Result{Requeue: true, RequeueAfter: requeueTime}, nil
 }
+
+// zhou: "validDevices" are valid, available and matching LocalVolumeSet spec.
+//       "delayedDevices" are the valid and available, but are not old enough.
 
 // runs filters and matchers on the blockDeviceList and returns valid devices
 // and devices that are not considered old enough to be valid yet
@@ -217,14 +254,20 @@ func (r *LocalVolumeSetReconciler) getValidDevices(
 	lvset *localv1alpha1.LocalVolumeSet,
 	blockDevices []internal.BlockDevice,
 ) ([]internal.BlockDevice, []internal.BlockDevice) {
+
 	validDevices := make([]internal.BlockDevice, 0)
 	delayedDevices := make([]internal.BlockDevice, 0)
 	// get valid devices
 DeviceLoop:
 	for _, blockDevice := range blockDevices {
 
+		// zhou: record the device first time be discovered.
+
 		// store device in deviceAgeMap
 		r.deviceAgeMap.storeDeviceAge(blockDevice.KName)
+
+		// zhou: make sure the device is valid and available.
+		//       "FilterMap" are a list of predefined functions.
 
 		for name, filter := range FilterMap {
 			var valid bool
@@ -242,8 +285,12 @@ DeviceLoop:
 			}
 		}
 
+		// zhou: device should be 1 minute old.
+
 		// check if the device is older than deviceMinAge
 		isOldEnough := r.deviceAgeMap.isOlderThan(blockDevice.KName)
+
+		// zhou: not old enough, put into "delayedDevices" list.
 
 		// skip devices younger than deviceMinAge
 		if !isOldEnough {
@@ -262,7 +309,9 @@ DeviceLoop:
 			continue DeviceLoop
 		}
 
-		for name, matcher := range matcherMap {
+		// zhou: make sure the device match LocalVolumeSet spec, except device number.
+
+		for name, matcher := range matcherMap1 {
 			valid, err := matcher(blockDevice, lvset.Spec.DeviceInclusionSpec)
 			if err != nil {
 				klog.ErrorS(err, "match error", "device",
@@ -282,6 +331,8 @@ DeviceLoop:
 	}
 	return validDevices, delayedDevices
 }
+
+// zhou: README, get already linked devices
 
 // returns:
 // count of already symlinked from validDevices
@@ -316,6 +367,8 @@ PathLoop:
 	}
 	return count, currentDeviceSymlinked, noMatch, nil
 }
+
+// zhou: README,
 
 func (r *LocalVolumeSetReconciler) provisionPV(
 	obj *localv1alpha1.LocalVolumeSet,
@@ -441,6 +494,8 @@ type LocalVolumeSetReconciler struct {
 	deleter        *provDeleter.Deleter
 }
 
+// zhou: current node name
+
 var watchNamespace string
 var nodeName string
 
@@ -506,6 +561,8 @@ func (r *LocalVolumeSetReconciler) WithManager(mgr ctrl.Manager) error {
 
 	return err
 }
+
+// zhou: PV owner LocalVolumeSet
 
 func handlePVChange(runtimeConfig *provCommon.RuntimeConfig, pv *corev1.PersistentVolume, q workqueue.RateLimitingInterface, isDelete bool) {
 	// skip non-owned PVs

@@ -15,6 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+// zhou: create or update diskmaker-discovery or diskmaker-manager DaemonSet.
+
 // daemonsets are defined as: daemonSetMutateFn func(*appsv1.DaemonSet) error
 // the function mutates whichever part of the daemonset it needs.
 // if the daemonset does not exist, the mutate func will be run on an empty DaemonSet which will be created
@@ -33,12 +35,17 @@ func CreateOrUpdateDaemonset(
 	if err != nil {
 		return ds, controllerutil.OperationResultNone, err
 	}
+
+	// zhou: used for update/create
+
 	mutateFn := func() error {
 		return daemonSetMutateFn(ds)
 	}
 	opResult, err := controllerutil.CreateOrUpdate(context.TODO(), c, ds, mutateFn)
 	return ds, opResult, err
 }
+
+// zhou: get function to create DaemonSet diskmaker-manager.
 
 // for a daemonset, only the following fields can be updated after creation:
 // we do not simply copy over all mutable fields,
@@ -66,6 +73,9 @@ func getDiskMakerDSMutateFn(
 ) func(*appsv1.DaemonSet) error {
 
 	return func(ds *appsv1.DaemonSet) error {
+
+		// zhou: "diskmaker-manager-daemonset.yaml"
+
 		// read template for default values
 		dsBytes, err := assets.ReadFileAndReplace(
 			common.DiskMakerManagerDaemonSetTemplate,
@@ -90,6 +100,8 @@ func getDiskMakerDSMutateFn(
 			dsTemplate,
 		)
 
+		// zhou: configmap content will be annotation
+
 		// add provisioner configmap hash
 		initMapIfNil(&ds.ObjectMeta.Annotations)
 		ds.ObjectMeta.Annotations[dataHashAnnotationKey] = dataHash
@@ -97,6 +109,8 @@ func getDiskMakerDSMutateFn(
 		return nil
 	}
 }
+
+// zhou: merge "tolerations", "ownerRefs", "nodeSelector", "dsTemplate" into "ds"
 
 // MutateAggregatedSpec returns a mutate function that applies the other arguments to the referenced daemonset
 // its purpose is to be used in more specific mutate functions

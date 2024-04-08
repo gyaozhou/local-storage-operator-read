@@ -99,6 +99,9 @@ func (r *LocalVolumeReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 		}
 		return ctrl.Result{Requeue: true}, err
 	}
+
+	// zhou:
+
 	// store a one to many association from storageClass to LocalVolumeSet
 	for _, storageClassDeviceSet := range localStorageProvider.Spec.StorageClassDevices {
 		r.LvMap.RegisterStorageClassOwner(storageClassDeviceSet.StorageClassName, request.NamespacedName)
@@ -384,13 +387,21 @@ func isDeletionCandidate(obj metav1.Object, finalizer string) bool {
 	return obj.GetDeletionTimestamp() != nil && contains(obj.GetFinalizers(), finalizer)
 }
 
+// zhou: handle LocalVolume and related DaemonSet, PV.
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *LocalVolumeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.apiClient = newAPIUpdater(mgr)
 	r.LvMap = &common.StorageClassOwnerMap{}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&localv1.LocalVolume{}).
+
+		// zhou: DaemonSet whose owner is LocalVolume
+
 		Watches(&appsv1.DaemonSet{}, handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &localv1.LocalVolume{})).
+
+		// zhou: PV whose corresponding StorageClass is created due to LocalVolume
+
 		//  watch for storageclass, enqueue owner
 		Watches(&corev1.PersistentVolume{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
@@ -406,6 +417,9 @@ func (r *LocalVolumeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				}
 				return reqs
 			})).
+
+		// zhou: PV whose labels include LocalVolume
+
 		// Watch for changes to owned resource PersistentVolume and enqueue the LocalVolume
 		// so that the controller can update the status and finalizer based on the owned PVs
 		Watches(&corev1.PersistentVolume{}, handler.EnqueueRequestsFromMapFunc(

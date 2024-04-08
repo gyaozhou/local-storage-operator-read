@@ -151,6 +151,8 @@ func (r *LocalVolumeReconciler) createSymlink(
 		return false
 	}
 
+	// zhou: clean disk by force.
+
 	if deviceNameLocation.forceWipe {
 		cmd := exec.Command("wipefs", "-a", "-f", symLinkSource)
 		err = cmd.Run()

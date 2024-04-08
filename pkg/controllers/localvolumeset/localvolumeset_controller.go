@@ -51,7 +51,7 @@ type LocalVolumeSetReconciler struct {
 	// that reads objects from the cache and writes to the apiserver
 	Client   client.Client
 	Scheme   *runtime.Scheme
-	LvSetMap *common.StorageClassOwnerMap
+	LvSetMap *common.StorageClassOwnerMap // zhou: multiple LocalVolumeSet will map to a single StorageClass.
 }
 
 // Reconcile reads that state of the cluster for a LocalVolumeSet object and makes changes based on the state read
@@ -65,12 +65,17 @@ func (r *LocalVolumeSetReconciler) Reconcile(ctx context.Context, request ctrl.R
 	return r.addAvailabilityConditions(ctx, request, result, err)
 }
 
+// zhou: DO NOT create DaemonSet.
+
 func (r *LocalVolumeSetReconciler) reconcile(ctx context.Context, request reconcile.Request) (ctrl.Result, error) {
 	klog.InfoS("Reconciling LocalVolumeSet", "namespace", request.Namespace, "name", request.Name)
 	// Fetch the LocalVolumeSet instance
 	lvSet := &localv1alpha1.LocalVolumeSet{}
 	err := r.Client.Get(ctx, request.NamespacedName, lvSet)
 	if err != nil {
+
+		// zhou: LocalVolumeSet was deleted, remove from StorageClass -> (LocalVolumeSet list)
+
 		if kerrors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
@@ -83,8 +88,13 @@ func (r *LocalVolumeSetReconciler) reconcile(ctx context.Context, request reconc
 		return ctrl.Result{}, err
 	}
 
+	// zhou: add to StorageClass -> (LocalVolumeSet list)
+
 	// store a one to many association from storageClass to LocalVolumeSet
 	r.LvSetMap.RegisterStorageClassOwner(lvSet.Spec.StorageClassName, request.NamespacedName)
+
+	// zhou: handle finalizer "storage.openshift.com/local-volume-protection"
+	//       And LocalVolumeSet deletion if all related PV are gone.
 
 	// handle the LocalVolumeSet finalizer
 	err = r.syncFinalizer(*lvSet)
@@ -117,6 +127,8 @@ func (r *LocalVolumeSetReconciler) reconcile(ctx context.Context, request reconc
 	return ctrl.Result{}, nil
 }
 
+// zhou: create StorageClass for Local PV, nobody handle deletion.
+
 func (r *LocalVolumeSetReconciler) syncStorageClass(ctx context.Context, lvs *localv1alpha1.LocalVolumeSet) error {
 	deleteReclaimPolicy := corev1.PersistentVolumeReclaimDelete
 	firstConsumerBinding := storagev1.VolumeBindingWaitForFirstConsumer
@@ -124,6 +136,9 @@ func (r *LocalVolumeSetReconciler) syncStorageClass(ctx context.Context, lvs *lo
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      lvs.Spec.StorageClassName,
 			Namespace: lvs.GetNamespace(),
+
+			// zhou: only the first LocalVolumeSet refer to this StorageClass will be set.
+
 			Labels: map[string]string{
 				common.OwnerNameLabel:      lvs.GetName(),
 				common.OwnerNamespaceLabel: lvs.GetNamespace(),
@@ -141,8 +156,13 @@ func (r *LocalVolumeSetReconciler) syncStorageClass(ctx context.Context, lvs *lo
 	return nil
 }
 
+// zhou: handle LocalVolumeSet and related DaemonSet, PV
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *LocalVolumeSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	// zhou: README ???
+
 	// Allows us to list PVs by a particular field selector. Handled and indexed by cache.
 	err := mgr.GetFieldIndexer().IndexField(context.TODO(), &corev1.PersistentVolume{}, pvStorageClassField,
 		func(o client.Object) []string {
@@ -158,8 +178,15 @@ func (r *LocalVolumeSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&localv1alpha1.LocalVolumeSet{}).
+
+		// zhou: DaemonSet whose owner is LocalVolumeSet
+
 		// watch provisioner, diskmaker-manager daemonsets and enqueue owning object to update status.conditions
 		Watches(&appsv1.DaemonSet{}, handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &localv1alpha1.LocalVolumeSet{}), builder.WithPredicates(common.EnqueueOnlyLabeledSubcomponents(nodedaemon.DiskMakerName, nodedaemon.ProvisionerName))).
+
+		// zhou: find the PV's StorageClass mapping LocalVolumeSet lists.
+		//       Why we need it ???
+
 		//  watch for storageclass, enqueue owner
 		Watches(&corev1.PersistentVolume{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {
@@ -167,6 +194,7 @@ func (r *LocalVolumeSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				if !ok {
 					return []reconcile.Request{}
 				}
+
 				names := r.LvSetMap.GetStorageClassOwners(pv.Spec.StorageClassName)
 				reqs := make([]reconcile.Request, 0)
 				for _, name := range names {
@@ -174,6 +202,9 @@ func (r *LocalVolumeSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				}
 				return reqs
 			})).
+
+		// zhou: LocalVolumeSet included in PV's label
+
 		// Watch for changes to owned resource PersistentVolume and enqueue the LocalVolumeSet
 		// so that the controller can update the status and finalizer(TODO) based on the owned PVs
 		Watches(&corev1.PersistentVolume{}, handler.EnqueueRequestsFromMapFunc(

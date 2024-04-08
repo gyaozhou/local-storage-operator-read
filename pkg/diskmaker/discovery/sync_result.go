@@ -45,6 +45,8 @@ func newDiscoveryResultInstance(nodeName, namespace, parentObjName, parentObjUID
 	return cr
 }
 
+// zhou: create LocalVolumeDiscoveryResult CR for this node where diskmaker-discovery DeamonSet Pod running.
+
 // ensureDiscoveryResultCR creates a new LocalVolumeDiscoveryResult custom resource on the node, if not present
 func (discovery *DeviceDiscovery) ensureDiscoveryResultCR() error {
 	nodeName := os.Getenv("MY_NODE_NAME")
@@ -54,6 +56,9 @@ func (discovery *DeviceDiscovery) ensureDiscoveryResultCR() error {
 	if nodeName == "" || namespace == "" || parentObjUID == "" || parentObjName == "" {
 		return errors.New("failed to create LocalVolumeDiscoveryResult resource. missing required env variables")
 	}
+
+	// zhou: create for this node
+
 	newCR := newDiscoveryResultInstance(nodeName, namespace, parentObjName, parentObjUID)
 	_, err := discovery.apiClient.GetDiscoveryResult(newCR.Name, newCR.Namespace)
 

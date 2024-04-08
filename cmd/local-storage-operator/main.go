@@ -68,6 +68,8 @@ func printVersion() {
 	klog.Infof("local-storage-diskmaker Version: %v", version)
 }
 
+// zhou: compiled as binary "local-storage-operator"
+
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -118,6 +120,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	// zhou: handle LocalVolume and related DaemonSet, PV.
+
 	if err = (&lvcontroller.LocalVolumeReconciler{
 		Client: mgr.GetClient(),
 		LvMap:  &common.StorageClassOwnerMap{},
@@ -126,6 +130,10 @@ func main() {
 		klog.ErrorS(err, "unable to create LocalVolume controller")
 		os.Exit(1)
 	}
+
+	// zhou: reconcile LocalVolumeDiscovery,
+	//       watch both LocalVolumeDiscovery and DaemonSet with owner LocalVolumeDiscovery.
+
 	if err = (&lvdcontroller.LocalVolumeDiscoveryReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -133,6 +141,10 @@ func main() {
 		klog.ErrorS(err, "unable to create LocalVolumeDiscovery controller")
 		os.Exit(1)
 	}
+
+	// zhou: reconcile LocalVolumeSet, perform preparation for diskmaker-manager
+	//       watch LocalVolumeSet and related DaemonSet, PV
+
 	if err = (&lvscontroller.LocalVolumeSetReconciler{
 		Client:   mgr.GetClient(),
 		LvSetMap: &common.StorageClassOwnerMap{},
@@ -141,6 +153,8 @@ func main() {
 		klog.ErrorS(err, "unable to create LocalVolumeSet controller")
 		os.Exit(1)
 	}
+
+	// zhou: setup DaemonSet diskmaker-manager
 
 	if err = (&nodedaemoncontroller.DaemonReconciler{
 		Client: mgr.GetClient(),

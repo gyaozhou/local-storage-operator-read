@@ -83,6 +83,9 @@ type LocalVolumeSetSpec struct {
 	NodeSelector *corev1.NodeSelector `json:"nodeSelector,omitempty"`
 	// StorageClassName to use for set of matched devices
 	StorageClassName string `json:"storageClassName"`
+
+	// zhou:
+
 	// MaxDeviceCount is the maximum number of Devices that needs to be detected per node.
 	// If it is not specified, there will be no limit to the number of provisioned devices.
 	// +optional

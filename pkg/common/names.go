@@ -36,6 +36,8 @@ const (
 	// the value is the node's name
 	DiscoveryNodeLabel = "discovery-result-node"
 
+	// zhou: "./assets/templates/*.yaml" and "./assets/templates/localmetrics/*.yaml"
+
 	LocalVolumeStorageClassTemplate     = "templates/localvolume-storageclass.yaml"
 	LocalProvisionerConfigMapTemplate   = "templates/local-provisioner-configmap.yaml"
 	DiskMakerManagerDaemonSetTemplate   = "templates/diskmaker-manager-daemonset.yaml"
@@ -59,6 +61,8 @@ const (
 	// enough to handle the PV reclaim policy.
 	LocalVolumeProtectionFinalizer = "storage.openshift.com/local-volume-protection"
 )
+
+// zhou: get image url from url in most of cases.
 
 // GetDiskMakerImage returns the image to be used for diskmaker daemonset
 func GetDiskMakerImage() string {

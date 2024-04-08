@@ -43,6 +43,8 @@ func init() {
 	utilruntime.Must(localv1alpha1.AddToScheme(scheme))
 }
 
+// zhou: sig-storage-local-static-provisioner
+
 func getRuntimeConfig(componentName string, mgr ctrl.Manager) *provCommon.RuntimeConfig {
 	volUtil, _ := provUtil.NewVolumeUtil()
 	return &provCommon.RuntimeConfig{
@@ -57,6 +59,8 @@ func getRuntimeConfig(componentName string, mgr ctrl.Manager) *provCommon.Runtim
 		Mounter: mount.New("" /* defaults to /bin/mount */),
 	}
 }
+
+// zhou: diskmaker-manager
 
 func startManager(cmd *cobra.Command, args []string) error {
 	klogFlags := flag.NewFlagSet("local-storage-diskmaker", flag.ExitOnError)
@@ -101,6 +105,8 @@ func startManager(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// zhou: reconcile LocalVolume
+
 	if err = diskmakerControllerLv.NewLocalVolumeReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
@@ -112,6 +118,8 @@ func startManager(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// zhou: reconcile LocalVolumeSet, provisioning PV
+
 	if err = diskmakerControllerLvSet.NewLocalVolumeSetReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
@@ -122,6 +130,10 @@ func startManager(cmd *cobra.Command, args []string) error {
 		klog.ErrorS(err, "unable to create LocalVolumeSet diskmaker controller")
 		return err
 	}
+
+	// zhou: reconcile ConfigMap
+	//       Reconcile reads that state of the cluster for a LocalVolumeSet object and
+	//       makes changes based on the state read and what is in the LocalVolumeSet.Spec
 
 	if err = diskmakerControllerDeleter.NewDeleteReconciler(
 		mgr.GetClient(),

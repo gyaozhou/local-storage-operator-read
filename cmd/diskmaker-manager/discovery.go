@@ -17,6 +17,8 @@ func startDeviceDiscovery(cmd *cobra.Command, args []string) error {
 		return errors.Wrap(err, "failed to discover devices")
 	}
 
+	// zhou: get LocalVolumeDiscovery naming "auto-discover-devices" in current namespace.
+
 	discoveryObj, err := discovery.NewDeviceDiscovery()
 	if err != nil {
 		return errors.Wrap(err, "failed to discover devices")

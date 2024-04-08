@@ -47,6 +47,8 @@ const (
 	MultiPathType DiscoveredDeviceType = "mpath"
 )
 
+// zhou: specify nodes lists.
+
 // LocalVolumeDiscoverySpec defines the desired state of LocalVolumeDiscovery
 type LocalVolumeDiscoverySpec struct {
 	// Nodes on which the automatic detection policies must run.
@@ -70,6 +72,8 @@ type LocalVolumeDiscoveryStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
+
+// zhou: used to trigger discovering drives in nodes.
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

@@ -21,6 +21,8 @@ func ContainsFinalizer(metadata metav1.ObjectMeta, finalizer string) bool {
 	return false
 }
 
+// zhou: get PV list matching the label
+
 // GetBoundAndReleasedPVs owned by the object
 func GetBoundAndReleasedPVs(obj runtime.Object, c client.Client) ([]corev1.PersistentVolume, []corev1.PersistentVolume, error) {
 	accessor, err := meta.Accessor(obj)

@@ -38,6 +38,8 @@ type DeviceDiscovery struct {
 	localVolumeDiscovery *v1alpha1.LocalVolumeDiscovery
 }
 
+// zhou: setup DeviceDiscovery instance
+
 // NewDeviceDiscovery returns a new DeviceDiscovery instance
 func NewDeviceDiscovery() (*DeviceDiscovery, error) {
 	scheme := scheme.Scheme
@@ -62,9 +64,14 @@ func NewDeviceDiscovery() (*DeviceDiscovery, error) {
 	return dd, nil
 }
 
+// zhou:
+
 // Start the device discovery process
 func (discovery *DeviceDiscovery) Start() error {
 	klog.Info("starting device discovery")
+
+	// zhou: create LocalVolumeDiscoveryResult CR for this node where diskmaker-discovery DeamonSet Pod running.
+
 	err := discovery.ensureDiscoveryResultCR()
 	if err != nil {
 		message := "failed to start device discovery"
@@ -82,6 +89,8 @@ func (discovery *DeviceDiscovery) Start() error {
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGTERM)
 
+	// zhou: checking udev event for every 5s
+
 	udevEvents := make(chan string)
 	go udevBlockMonitor(udevEvents, udevEventPeriod)
 	for {
@@ -90,10 +99,16 @@ func (discovery *DeviceDiscovery) Start() error {
 			klog.Info("shutdown signal received, exiting...")
 			return nil
 		case <-time.After(probeInterval):
+
+			// zhou: discovering for every 5m
+
 			if err := discovery.discoverDevices(); err != nil {
 				klog.Errorf("failed to discover devices during probe interval. %v", err)
 			}
 		case _, ok := <-udevEvents:
+
+			// zhou: discovering in case of udev events.
+
 			if ok {
 				klog.Info("trigger probe from udev event")
 				if err := discovery.discoverDevices(); err != nil {
@@ -106,6 +121,8 @@ func (discovery *DeviceDiscovery) Start() error {
 		}
 	}
 }
+
+// zhou: core function to discover device.
 
 // discoverDevices identifies the list of usable disks on the current node
 func (discovery *DeviceDiscovery) discoverDevices() error {
@@ -145,6 +162,8 @@ func (discovery *DeviceDiscovery) discoverDevices() error {
 	return nil
 }
 
+// zhou: get valid block deivce list
+
 // getValidBlockDevices fetchs all the block devices sutitable for discovery
 func getValidBlockDevices() ([]internal.BlockDevice, error) {
 	blockDevices, output, err := internal.ListBlockDevices([]string{})
@@ -163,6 +182,8 @@ func getValidBlockDevices() ([]internal.BlockDevice, error) {
 
 	return validDevices, nil
 }
+
+// zhou: convert to LocalVolumeDiscoveryResult format.
 
 // getDiscoverdDevices creates v1alpha1.DiscoveredDevice from internal.BlockDevices
 func getDiscoverdDevices(blockDevices []internal.BlockDevice) []v1alpha1.DiscoveredDevice {
@@ -193,7 +214,7 @@ func getDiscoverdDevices(blockDevices []internal.BlockDevice) []v1alpha1.Discove
 			DeviceID: deviceID,
 			Size:     size,
 			Property: parseDeviceProperty(blockDevice.Rotational),
-			Status:   getDeviceStatus(blockDevice),
+			Status:   getDeviceStatus(blockDevice), // zhou: mark device availability
 		}
 		discoveredDevices = append(discoveredDevices, discoveredDevice)
 	}
@@ -220,22 +241,34 @@ func uniqueDevices(sample []v1alpha1.DiscoveredDevice) []v1alpha1.DiscoveredDevi
 	return unique
 }
 
+// zhou: fill out the devices will be listed in LocalVolumeDiscoveryResult,
+//       to get valid devices.
+
 // ignoreDevices checks if a device should be ignored during discovery
 func ignoreDevices(dev internal.BlockDevice) bool {
+
+	// zhou: not read only
+
 	if readOnly, err := dev.GetReadOnly(); err != nil || readOnly {
 		klog.Infof("ignoring read only device %q", dev.Name)
 		return true
 	}
+
+	// zhou: no partitions on it.
 
 	if hasChildren, err := dev.HasChildren(); err != nil || hasChildren {
 		klog.Infof("ignoring root device %q", dev.Name)
 		return true
 	}
 
+	// zhou: healthy state normal
+
 	if dev.State == internal.StateSuspended {
 		klog.Infof("ignoring device %q with invalid state %q", dev.Name, dev.State)
 		return true
 	}
+
+	// zhou: only these type supported, "disk", "part", "lvm", "mpath".
 
 	if !supportedDeviceTypes.Has(dev.Type) {
 		klog.Infof("ignoring device %q with invalid type %q", dev.Name, dev.Type)
@@ -245,8 +278,13 @@ func ignoreDevices(dev internal.BlockDevice) bool {
 	return false
 }
 
+// zhou: mark device availability for local PV !!!
+
 // getDeviceStatus returns device status as "Available", "NotAvailable" or "Unkown"
 func getDeviceStatus(dev internal.BlockDevice) v1alpha1.DeviceStatus {
+
+	// zhou: no filesystem
+
 	status := v1alpha1.DeviceStatus{}
 	if dev.FSType != "" {
 		klog.Infof("device %q with filesystem %q is not available", dev.Name, dev.FSType)
@@ -276,6 +314,8 @@ func getDeviceStatus(dev internal.BlockDevice) v1alpha1.DeviceStatus {
 		return status
 	}
 
+	// zhou: device not mounted.
+
 	hasBindMounts, mountPoint, err := dev.HasBindMounts()
 	if err != nil {
 		status.State = v1alpha1.Unknown
@@ -292,6 +332,8 @@ func getDeviceStatus(dev internal.BlockDevice) v1alpha1.DeviceStatus {
 	status.State = v1alpha1.Available
 	return status
 }
+
+// zhou: HDD or not?
 
 func parseDeviceProperty(property string) v1alpha1.DeviceMechanicalProperty {
 	switch {
