@@ -32,6 +32,8 @@ func init() {
 	watchNamespace, _ = common.GetWatchNamespace()
 }
 
+// zhou: README, reconcile ConfigMap
+
 // Reconcile reads that state of the cluster for a LocalVolumeSet object and makes changes based on the state read
 // and what is in the LocalVolumeSet.Spec
 // Note:
@@ -106,6 +108,9 @@ func (r *DeleteReconciler) WithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		// set to 1 explicitly, despite it being the default, as the reconciler is not thread-safe.
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
+
+		// zhou: watch the ConfigMap we this app created.
+
 		// Watch config maps with the deleter config
 		For(&corev1.ConfigMap{}, builder.WithPredicates(common.EnqueueOnlyLabeledSubcomponents(common.ProvisionerConfigMapName))).
 		// update owned-pv cache used by provisioner/deleter libs and enequeue owning lvset
@@ -155,6 +160,8 @@ func handlePVChange(runtimeConfig *provCommon.RuntimeConfig, pv *corev1.Persiste
 	}
 	// enqueue only if the provisioner name matches,
 	// or the first run hasn't happened yet, and we don't know the provisioner name to compare it to
+
+	// zhou: update cache, the mananged PV. who will use this acache???
 
 	// update cache
 	if isDelete {

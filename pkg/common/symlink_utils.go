@@ -8,6 +8,9 @@ import (
 	"github.com/openshift/local-storage-operator/pkg/internal"
 )
 
+// zhou: in order to get device's corresponding device id and target, like
+//       "wwn-0x5ee228447f8ce3a9-> /dev/disk/by-id/wwn-0x5ee228447f8ce3a9"
+
 // GetSymLinkSourceAndTarget returns
 // `source`: the /dev/disk/by-id path of the device if it exists, /dev/KNAME if it doesn't
 // `target`: the path in the symlinkdir to symlink to. device-id if it exists, KNAME if it doesn't

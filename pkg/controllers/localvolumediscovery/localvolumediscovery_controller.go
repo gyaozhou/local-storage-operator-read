@@ -59,6 +59,8 @@ type LocalVolumeDiscoveryReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+// zhou: create DaemonSet diskmaker-discovery
+
 // Reconcile reads that state of the cluster for a LocalVolumeDiscovery object and makes changes based on the state read
 // and what is in the LocalVolumeDiscovery.Spec
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
@@ -88,10 +90,15 @@ func (r *LocalVolumeDiscoveryReconciler) Reconcile(ctx context.Context, request 
 		return ctrl.Result{}, err
 	}
 
+	// zhou: get a Fn used to generate Discovery DaemonSet
+
 	diskMakerDSMutateFn := getDiskMakerDiscoveryDSMutateFn(request, instance.Spec.Tolerations,
 		getEnvVars(instance.Name, string(instance.UID)),
 		getOwnerRefs(instance),
 		instance.Spec.NodeSelector)
+
+	// zhou: create or update Discovery DaemonSet
+
 	ds, opResult, err := nodedaemon.CreateOrUpdateDaemonset(ctx, r.Client, diskMakerDSMutateFn)
 	if err != nil {
 		message := fmt.Sprintf("failed to create discovery daemonset. Error %+v", err)
@@ -120,6 +127,9 @@ func (r *LocalVolumeDiscoveryReconciler) Reconcile(ctx context.Context, request 
 		return waitForRequeueIfDaemonsNotReady, fmt.Errorf(message)
 
 	} else if !(desiredDaemons == readyDaemons) {
+
+		// zhou: all of DaemonSet Pods are running
+
 		message := fmt.Sprintf("running %d out of %d discovery daemons", readyDaemons, desiredDaemons)
 		err := r.updateDiscoveryStatus(ctx, instance, operatorv1.OperatorStatusTypeProgressing, message,
 			operatorv1.ConditionFalse, localv1alpha1.Discovering)
@@ -130,12 +140,17 @@ func (r *LocalVolumeDiscoveryReconciler) Reconcile(ctx context.Context, request 
 		return waitForRequeueIfDaemonsNotReady, nil
 	}
 
+	// zhou: part of DaemonSet Pods are running
+
 	message := fmt.Sprintf("successfully running %d out of %d discovery daemons", desiredDaemons, readyDaemons)
 	err = r.updateDiscoveryStatus(ctx, instance, operatorv1.OperatorStatusTypeAvailable, message,
 		operatorv1.ConditionTrue, localv1alpha1.Discovering)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// zhou: delete LocalVolumeDiscoveryResult CR which corresponding nodes are out of current
+	//       LocalVolumeDiscovery nodes selector scope.
 
 	klog.Info("deleting orphan discovery result instances")
 	err = r.deleteOrphanDiscoveryResults(ctx, instance)
@@ -146,6 +161,8 @@ func (r *LocalVolumeDiscoveryReconciler) Reconcile(ctx context.Context, request 
 
 	return ctrl.Result{}, nil
 }
+
+// zhou: get a Fn used to generate Discovery DaemonSet
 
 func getDiskMakerDiscoveryDSMutateFn(request reconcile.Request,
 	tolerations []corev1.Toleration,
@@ -166,7 +183,12 @@ func getDiskMakerDiscoveryDSMutateFn(request reconcile.Request,
 		if err != nil {
 			return err
 		}
+
+		// zhou: unmarshal into DaemonSet
+
 		dsTemplate := resourceread.ReadDaemonSetV1OrDie(dsBytes)
+
+		// zhou: merge "tolerations", "ownerRefs", "nodeSelector", "dsTemplate" into "ds"
 
 		nodedaemon.MutateAggregatedSpec(
 			ds,
@@ -207,6 +229,9 @@ func (r *LocalVolumeDiscoveryReconciler) updateDiscoveryStatus(ctx context.Conte
 
 	return nil
 }
+
+// zhou: delete LocalVolumeDiscoveryResult CR which corresponding nodes are out of current
+//       LocalVolumeDiscovery nodes selector scope.
 
 func (r *LocalVolumeDiscoveryReconciler) deleteOrphanDiscoveryResults(ctx context.Context, instance *localv1alpha1.LocalVolumeDiscovery) error {
 	if instance.Spec.NodeSelector == nil || len(instance.Spec.NodeSelector.NodeSelectorTerms) == 0 {
@@ -287,6 +312,13 @@ func getEnvVars(objName, uid string) []corev1.EnvVar {
 		},
 	}
 }
+
+// zhou: handle both LocalVolumeDiscovery and DaemonSet with owner:
+//  ownerReferences:
+//  - apiVersion: local.storage.openshift.io/v1alpha1
+//    controller: true
+//    kind: LocalVolumeDiscovery
+//    name: auto-discover-devices
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *LocalVolumeDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {

@@ -23,6 +23,9 @@ import (
 	"github.com/openshift/local-storage-operator/pkg/common"
 )
 
+// zhou: create/update ConfigMap "local-provisioner"
+//       Will be used by DaemonSet diskmaker-manager.
+
 func (r *DaemonReconciler) reconcileProvisionerConfigMap(
 	ctx context.Context,
 	request reconcile.Request,
@@ -30,6 +33,9 @@ func (r *DaemonReconciler) reconcileProvisionerConfigMap(
 	lvs []v1.LocalVolume,
 	ownerRefs []metav1.OwnerReference,
 ) (*corev1.ConfigMap, controllerutil.OperationResult, error) {
+
+	// zhou: "templates/local-provisioner-configmap.yaml"
+
 	// read template for default object meta
 	cmBytes, err := assets.ReadFileAndReplace(
 		common.LocalProvisionerConfigMapTemplate,

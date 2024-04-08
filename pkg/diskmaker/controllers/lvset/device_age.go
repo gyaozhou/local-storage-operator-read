@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// zhou: map from KNAME of device to time when the device was first observed since the process started.
+//       Used to make sure the device is stable enough, at lease 1 minute.
+
 var (
 	// deviceMinAge is the minimum age for a device to be considered safe to claim
 	// otherwise, it could be a device that some other entity has attached and we have not claimed.

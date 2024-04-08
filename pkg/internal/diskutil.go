@@ -40,6 +40,8 @@ func (e IDPathNotFoundError) Error() string {
 	return fmt.Sprintf("IDPathNotFoundError: a symlink to  %q was not found in %q", e.DeviceName, DiskByIDDir)
 }
 
+// zhou: device related info.
+
 // BlockDevice is the a block device as output by lsblk.
 // All the fields are lsblk columns.
 type BlockDevice struct {
@@ -107,6 +109,36 @@ func (b BlockDevice) GetSize() (int64, error) {
 	return v, err
 }
 
+// zhou: has children devices, no partitions?
+/*
+# ls -l /sys/block/nvme0n1/
+total 0
+-r--r--r--. 1 root root 4096 Apr 23 07:25 alignment_offset
+lrwxrwxrwx. 1 root root    0 Mar 27 03:35 bdi -> ../../../bdi/259:1
+-r--r--r--. 1 root root 4096 Apr 23 07:25 capability
+-r--r--r--. 1 root root 4096 Mar 27 03:31 dev
+lrwxrwxrwx. 1 root root    0 Mar 27 03:35 device -> ../../nvme-subsys0
+-r--r--r--. 1 root root 4096 Apr 23 07:25 discard_alignment
+-r--r--r--. 1 root root 4096 Apr 23 07:25 diskseq
+-r--r--r--. 1 root root 4096 Apr 23 07:25 eui
+-r--r--r--. 1 root root 4096 Apr 23 07:25 events
+-r--r--r--. 1 root root 4096 Apr 23 07:25 events_async
+-rw-r--r--. 1 root root 4096 Apr 23 07:25 events_poll_msecs
+-r--r--r--. 1 root root 4096 Apr 23 06:49 ext_range
+-r--r--r--. 1 root root 4096 Mar 27 03:31 hidden
+drwxr-xr-x. 2 root root    0 Mar 27 03:35 holders
+-r--r--r--. 1 root root 4096 Apr 23 07:25 inflight
+drwxr-xr-x. 2 root root    0 Mar 27 03:35 integrity
+-r--r--r--. 1 root root 4096 Mar 27 03:31 nsid
+drwxr-xr-x. 5 root root    0 Mar 27 03:31 nvme0n1p1   <----------------
+drwxr-xr-x. 5 root root    0 Mar 27 03:31 nvme0n1p2   <----------------
+drwxr-xr-x. 5 root root    0 Mar 27 03:31 nvme0n1p3   <----------------
+drwxr-xr-x. 5 root root    0 Mar 27 03:31 nvme0n1p4   <----------------
+drwxr-xr-x. 2 root root    0 Mar 27 03:35 power
+drwxr-xr-x. 2 root root    0 Mar 27 03:31 queue
+...
+*/
+
 // HasChildren check on BlockDevice
 func (b BlockDevice) HasChildren() (bool, error) {
 	sysDevDir := filepath.Join("/sys/block/", b.KName, "/*")
@@ -122,6 +154,8 @@ func (b BlockDevice) HasChildren() (bool, error) {
 	}
 	return false, nil
 }
+
+// zhou: device not mounted.
 
 // HasBindMounts checks for bind mounts and returns mount point for a device by parsing `proc/1/mountinfo`.
 // HostPID should be set to true inside the POD spec to get details of host's mount points inside `proc/1/mountinfo`.
@@ -229,15 +263,21 @@ func PathEvalsToDiskLabel(path, devName string) (bool, error) {
 	return false, nil
 }
 
+// zhou: lsblk
+
 // ListBlockDevices using the lsblk command
 func ListBlockDevices(devices []string) ([]BlockDevice, []string, error) {
 	// var output bytes.Buffer
 	var blockDevices []BlockDevice
 
+	// zhou: used to fetch device corresponding filesystem.
+
 	deviceFSMap, err := GetDeviceFSMap(devices)
 	if err != nil {
 		return []BlockDevice{}, []string{}, errors.Wrap(err, "failed to list block devices")
 	}
+
+	// zhou: output example: NAME="sda" ROTA="0" TYPE="disk" SIZE="1234567890" MODEL="KPM6xxxxx    " VENDOR="KIOXIA  " RO="0" RM="0" STATE="running" KNAME="sda" SERIAL="" PARTLABEL=""
 
 	columns := "NAME,ROTA,TYPE,SIZE,MODEL,VENDOR,RO,RM,STATE,KNAME,SERIAL,PARTLABEL"
 	args := []string{"--pairs", "-b", "-o", columns}
@@ -283,6 +323,8 @@ func ListBlockDevices(devices []string) ([]BlockDevice, []string, error) {
 			klog.Warningf("failed to parse all the lsblk rows. Bad rows: %+v", badRows)
 		}
 
+		// zhou: add extra attribute "fsType" if has.
+
 		// Update device filesystem using `blkid`
 		if fs, ok := deviceFSMap[fmt.Sprintf("/dev/%s", name)]; ok {
 			outputMap["fsType"] = fs
@@ -307,6 +349,8 @@ func ListBlockDevices(devices []string) ([]BlockDevice, []string, error) {
 
 	return blockDevices, badRows, nil
 }
+
+// zhou: execute `blkid -s TYPE`, used to fetch device corresponding filesystem.
 
 // GetDeviceFSMap returns mapping between disks and the filesystem using blkid
 // It parses the output of `blkid -s TYPE`. Sample ouput format before parsing
@@ -403,6 +447,8 @@ func GetMatchingSymlinksInDirs(path string, dirs ...string) ([]string, error) {
 	}
 	return links, nil
 }
+
+// zhou: get linked device which not matching LocalVolumeSet anymore.
 
 // GetOrphanedSymlinks returns the devices that were symlinked previously, but didn't match the updated
 // LocalVolumeSet deviceInclusionSpec or LocalVolume devicePaths

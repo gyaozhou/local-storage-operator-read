@@ -11,6 +11,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+// zhou: handle LocalVolumeSet finalizer "storage.openshift.com/local-volume-protection"
+//       And LocalVolumeSet deletion if all related PV are gone.
+//       Why not handle StorageClass ???
+
 func (r *LocalVolumeSetReconciler) syncFinalizer(lvSet localv1alpha1.LocalVolumeSet) error {
 	lvSetExisting := &localv1alpha1.LocalVolumeSet{}
 	lvSet.DeepCopyInto(lvSetExisting)
@@ -20,11 +24,16 @@ func (r *LocalVolumeSetReconciler) syncFinalizer(lvSet localv1alpha1.LocalVolume
 	// handle deletion
 	if !lvSet.DeletionTimestamp.IsZero() {
 		klog.Info("deletionTimeStamp found, waiting for 0 bound PVs")
+
+		// zhou: get PV list matching the label
+
 		// if obect is deleted, finalizer should be unset only when no boundPVs are found
 		boundPVs, releasedPVs, err := common.GetBoundAndReleasedPVs(&lvSet, r.Client)
 		if err != nil {
 			return fmt.Errorf("could not list bound PVs: %w", err)
 		}
+
+		// zhou: both bound and release PV blocking the deletion.
 
 		// if we add support for other reclaimPolicy's we can avoid appending releasedPVs here only bound PVs
 		pendingPVs := append(boundPVs, releasedPVs...)

@@ -68,6 +68,8 @@ type LocalVolumeDiscoveryResultSpec struct {
 	NodeName string `json:"nodeName"`
 }
 
+// zhou: discovered devices in this node
+
 // LocalVolumeDiscoveryResultStatus defines the observed state of LocalVolumeDiscoveryResult
 type LocalVolumeDiscoveryResultStatus struct {
 	// DiscoveredTimeStamp is the last timestamp when the list of discovered devices was updated
@@ -83,6 +85,8 @@ type LocalVolumeDiscoveryResultStatus struct {
 	// +optional
 	DiscoveredDevices []DiscoveredDevice `json:"discoveredDevices"`
 }
+
+// zhou: "discovery-result-" + <node name> as the CR name
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status

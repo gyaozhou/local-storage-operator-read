@@ -20,6 +20,9 @@ import (
 	provDeleter "sigs.k8s.io/sig-storage-local-static-provisioner/pkg/deleter"
 )
 
+// zhou: only one mount path /mnt/local-storage/odf-lvs.
+//       Used in Filesystem type of volume, inherit from local-static-provisioner.
+
 // GenerateMountMap is used to get a set of mountpoints that can be quickly looked up
 func GenerateMountMap(runtimeConfig *provCommon.RuntimeConfig) (sets.String, error) {
 	type empty struct{}
@@ -35,6 +38,8 @@ func GenerateMountMap(runtimeConfig *provCommon.RuntimeConfig) (sets.String, err
 	}
 	return mountPointMap, nil
 }
+
+// zhou: core function, provisioning PV
 
 // CreateLocalPV is used to create a local PV against a symlink
 // after passing the same validations against that symlink that local-static-provisioner uses
@@ -57,7 +62,11 @@ func CreateLocalPV(
 		return fmt.Errorf("could node find label %q for node %q", corev1.LabelHostname, runtimeConfig.Node.GetName())
 	}
 
+	// zhou: "local-pv-xxx", xxx comes from hash of these arguments.
+
 	pvName := GeneratePVName(filepath.Base(symLinkPath), runtimeConfig.Node.Name, storageClass.Name)
+
+	// zhou: node affinity in PV.
 
 	nodeAffinity := &corev1.VolumeNodeAffinity{
 		Required: &corev1.NodeSelector{
@@ -74,6 +83,18 @@ func CreateLocalPV(
 			},
 		},
 	}
+
+	// zhou: like this example, part of ConfigMap.
+	/*
+			  storageClassMap: |
+			    odf-lvs:
+			      blockCleanerCommand: null
+			      fsType: ""
+			      hostDir: /mnt/local-storage/odf-lvs
+			      mountDir: /mnt/local-storage/odf-lvs
+			      namePattern: ""
+		      volumeMode: Block
+	*/
 
 	mountConfig, found := runtimeConfig.DiscoveryMap[storageClass.GetName()]
 	if !found {
@@ -101,6 +122,9 @@ func CreateLocalPV(
 	var capacityBytes int64
 	switch actualVolumeMode {
 	case corev1.PersistentVolumeBlock:
+
+		// zhou: ordinary path
+
 		capacityBytes, err = runtimeConfig.VolUtil.GetBlockCapacityByte(symLinkPath)
 		if err != nil {
 			return fmt.Errorf("could not read device capacity: %w", err)
@@ -126,6 +150,14 @@ func CreateLocalPV(
 		return fmt.Errorf("path %q has unexpected volume type %q", symLinkPath, actualVolumeMode)
 	}
 
+	// zhou: set PV label like:
+	/*
+		kubernetes.io/hostname: node01.example.local
+		storage.openshift.com/owner-kind: LocalVolumeSet
+		storage.openshift.com/owner-name: odf-lvs
+		storage.openshift.com/owner-namespace: openshift-local-storage
+	*/
+
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
 
@@ -148,6 +180,14 @@ func CreateLocalPV(
 	for key, value := range extraLabelsForPV {
 		labels[key] = value
 	}
+
+	// zhou: set PV annotation like:
+	/*
+		pv.kubernetes.io/provisioned-by: local-volume-provisioner-node01.example.local
+		storage.openshift.com/device-id: wwn-0x5ee228447f8ce3a9
+		storage.openshift.com/device-name: sda
+	*/
+
 	annotations := map[string]string{
 		PVDeviceNameLabel:           deviceName,
 		provCommon.AnnProvisionedBy: runtimeConfig.Name,
@@ -155,6 +195,8 @@ func CreateLocalPV(
 	if idExists {
 		annotations[PVDeviceIDLabel] = filepath.Base(symLinkPath)
 	}
+
+	// zhou: set persistentVolumeReclaimPolicy
 
 	var reclaimPolicy corev1.PersistentVolumeReclaimPolicy
 	if storageClass.ReclaimPolicy == nil {
@@ -181,7 +223,12 @@ func CreateLocalPV(
 	if desiredVolumeMode == corev1.PersistentVolumeFilesystem && fsType != "" {
 		localPVConfig.FsType = &fsType
 	}
+
+	// zhou: generate expected PV
+
 	newPV := provCommon.CreateLocalPVSpec(localPVConfig)
+
+	// zhou: create PV
 
 	existingPV := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: pvName}}
 

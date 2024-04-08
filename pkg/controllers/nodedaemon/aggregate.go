@@ -15,6 +15,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// zhou: get all LocalVolumeSet and LocalVolume related infor.
+
 func (r *DaemonReconciler) aggregateDeamonInfo(ctx context.Context, request reconcile.Request) (localv1alpha1.LocalVolumeSetList, v1.LocalVolumeList, []corev1.Toleration, []metav1.OwnerReference, *corev1.NodeSelector, error) {
 	//list
 	lvSetList := localv1alpha1.LocalVolumeSetList{}

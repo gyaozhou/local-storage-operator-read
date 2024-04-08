@@ -6,6 +6,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// zhou: multiple LocalVolumeSet will map to a single StorageClass.
+//       Although this mapping is not persistent, it will be rebuild during restart,
+//       because of LocalVolumeSet/LocalVolume CR will be reconciled.
+
 // StorageClassOwnerMap
 // store a one to many association from storageClass to storageclass owner (LocalVolume,LocalVolumeSet,etc),
 // so that one PV/SC event can fan out requests to all owners.
@@ -13,6 +17,8 @@ type StorageClassOwnerMap struct {
 	storageClassMap map[string]map[types.NamespacedName]struct{}
 	mux             sync.Mutex
 }
+
+// zhou: get the LocalVolumeSet/LocalVolume NamespacedName list which refer this StroageClass Name.
 
 func (l *StorageClassOwnerMap) GetStorageClassOwners(storageClass string) []types.NamespacedName {
 	l.mux.Lock()
@@ -34,6 +40,8 @@ func (l *StorageClassOwnerMap) GetStorageClassOwners(storageClass string) []type
 	return result
 }
 
+// zhou: add to StorageClass -> (LocalVolumeSet list), or StorageClass -> (LocalVolume list)
+
 func (l *StorageClassOwnerMap) RegisterStorageClassOwner(storageClass string, name types.NamespacedName) {
 	l.mux.Lock()
 	defer l.mux.Unlock()
@@ -50,6 +58,8 @@ func (l *StorageClassOwnerMap) RegisterStorageClassOwner(storageClass string, na
 	}
 	return
 }
+
+// zhou: remove from StorageClass -> LocalVolumeSet list, or StorageClass -> (LocalVolume list)
 
 func (l *StorageClassOwnerMap) DeregisterStorageClassOwner(storageClass string, name types.NamespacedName) {
 	l.mux.Lock()

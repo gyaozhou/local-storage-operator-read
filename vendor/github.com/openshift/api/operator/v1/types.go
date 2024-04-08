@@ -30,6 +30,8 @@ type MyOperatorResourceStatus struct {
 	OperatorStatus `json:",inline"`
 }
 
+// zhou:
+
 // +kubebuilder:validation:Pattern=`^(Managed|Unmanaged|Force|Removed)$`
 type ManagementState string
 

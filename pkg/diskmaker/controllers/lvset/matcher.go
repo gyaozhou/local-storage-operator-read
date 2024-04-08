@@ -33,6 +33,9 @@ const (
 
 var defaultMinSize = resource.MustParse("1Gi")
 
+// zhou: like pkg/diskmaker/discovery/discovery.go ignoreDevices() + getDeviceStatus().
+//       Make sure the device is valid and available.
+
 // maps of function identifier (for logs) to filter function.
 // These are passed the localv1alpha1.DeviceInclusionSpec to make testing easier,
 // but they aren't expected to use it
@@ -93,6 +96,8 @@ var FilterMap = map[string]func(internal.BlockDevice, *localv1alpha1.DeviceInclu
 
 	},
 }
+
+// zhou: match LocalVolumeSet spec, except device number.
 
 // functions that match device by *localv1alpha1.DeviceInclusionSpec
 var matcherMap = map[string]func(internal.BlockDevice, *localv1alpha1.DeviceInclusionSpec) (bool, error){
